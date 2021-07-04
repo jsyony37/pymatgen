@@ -1559,10 +1559,24 @@ class CubicSupercellTransformation(AbstractTransformation):
         sc_not_found = True
 
         if self.force_diagonal:
-            scale = self.min_length / np.array(structure.lattice.abc)
-            self.transformation_matrix = np.diag(np.ceil(scale).astype(int))
+            scale = np.ceil(self.min_length / np.array(structure.lattice.abc))
+            self.transformation_matrix = np.diag(scale.astype(int))
             st = SupercellTransformation(self.transformation_matrix)
-            return st.apply_transformation(structure)
+            while True:
+                superstructure = st.apply_transformation(structure)
+                num_at = superstructure.num_sites
+                if self.min_atoms < num_at and self.max_atoms > num_at:
+                    break
+                elif num_at > self.max_atoms:
+                    raise AttributeError(
+                        "While trying to solve for the supercell, the max "
+                        "number of atoms was exceeded. Try increasing max_atoms."
+                    )
+                else:
+                    scale += 1
+                    self.transformation_matrix = np.diag(scale.astype(int))
+                    st = SupercellTransformation(self.transformation_matrix)
+            return superstructure
 
         # target_threshold is used as the desired cubic side lengths
         target_sc_size = self.min_length

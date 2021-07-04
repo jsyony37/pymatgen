@@ -110,17 +110,28 @@ class Control(MSONable, dict):
         """
         super().__init__()
         if ngrid is None:
-            ngrid = [25, 25, 25]
+            ngrid = [16,16,16]
 
         self["ngrid"] = ngrid
 
         if isinstance(temperature, (int, float)):
             self["t"] = temperature
-
+        elif isinstance(temperature, (list, np.ndarray)):
+            t_max = np.max(np.array(temperature))
+            t_min = np.min(np.array(temperature))
+            if t_min==0:
+                t_min = np.partition(temperature,1)[1]
+                t_step = (t_max-t_min)/(len(temperature)-2)
+            else:
+                t_step = (t_max-t_min)/(len(temperature)-1)
+            
+            self["t_min"] = t_min
+            self["t_max"] = t_max
+            self["t_step"] = t_step
         elif isinstance(temperature, dict):
-            self["t_min"] = temperature["min"]
-            self["t_max"] = temperature["max"]
-            self["t_step"] = temperature["step"]
+            self["t_min"] = temperature["t_min"]
+            self["t_max"] = temperature["t_max"]
+            self["t_step"] = temperature["t_step"]
         else:
             raise ValueError("Unsupported temperature type, must be float or dict")
 
@@ -203,7 +214,7 @@ class Control(MSONable, dict):
             file.write(control_str)
 
     @classmethod
-    def from_structure(cls, structure: Structure, reciprocal_density: Optional[int] = 50000, **kwargs):
+    def from_structure(cls, structure: Structure, reciprocal_density: Optional[int] = 15000, **kwargs):
         """
         Get a ShengBTE control object from a structure.
 
@@ -240,7 +251,7 @@ class Control(MSONable, dict):
             control_dict["ngrid"] = kpoints.kpts[0]
 
         control_dict.update(**kwargs)
-
+        print('CONTROL_DICT {}'.format(control_dict))
         return Control(**control_dict)
 
     def get_structure(self) -> Structure:
