@@ -231,7 +231,8 @@ class Control(MSONable, dict):
 
         elements = list(map(str, structure.composition.elements))
 
-        unique_nums = np.unique(structure.atomic_numbers)
+        _, idx = np.unique(structure.atomic_numbers, return_index=True) 
+        unique_nums = [structure.atomic_numbers[index] for index in sorted(idx)]
         types_dict = dict(zip(unique_nums, range(len(unique_nums))))
         types = [types_dict[i] + 1 for i in structure.atomic_numbers]
 
