@@ -21,7 +21,7 @@ try:
 except ImportError:
     f90nml = None
 
-__author__ = "Rees Chang, Alex Ganose"
+__author__ = "Rees Chang, Alex Ganose, Junsoo Park"
 __copyright__ = "Copyright 2019, The Materials Project"
 __version__ = "0.1"
 __email__ = "rc564@cornell.edu, aganose@lbl.gov"
