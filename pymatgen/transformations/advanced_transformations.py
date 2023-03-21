@@ -1517,8 +1517,8 @@ class CubicSupercellTransformation(AbstractTransformation):
 
     def __init__(
         self,
-        min_atoms: Optional[int] = None,
-        max_atoms: Optional[int] = None,
+        min_atoms: Optional[int] = 200,
+        max_atoms: Optional[int] = 600,
         min_length: float = 15.0,
         force_diagonal: bool = False,
     ):
