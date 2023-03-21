@@ -1517,7 +1517,7 @@ class CubicSupercellTransformation(AbstractTransformation):
 
     def __init__(
         self,
-        min_atoms: Optional[int] = 200,
+        min_atoms: Optional[int] = 150,
         max_atoms: Optional[int] = 600,
         min_length: float = 15.0,
         force_diagonal: bool = False,
@@ -1535,7 +1535,7 @@ class CubicSupercellTransformation(AbstractTransformation):
         self.min_length = min_length
         self.force_diagonal = force_diagonal
         self.transformation_matrix = None
-
+        
     def apply_transformation(self, structure: Structure) -> Structure:
         """
         The algorithm solves for a transformation matrix that makes the
