@@ -2163,7 +2163,7 @@ class SQSTransformation(AbstractTransformation):
 
 
 class MonteCarloRattleTransformation(AbstractTransformation):
-    r"""
+    """
     Uses a Monte Carlo rattle procedure to randomly perturb the sites in a
     structure.
 
@@ -2251,3 +2251,90 @@ class MonteCarloRattleTransformation(AbstractTransformation):
         Returns: False
         """
         return False
+
+
+
+
+class FixedRandomDisplacementTransformation(AbstractTransformation):
+    """
+    Uses a fixed magnitude of displacements in random directions to perturb the sites in a
+    structure.
+
+    This class requires the hiPhive package to be installed.
+
+    Rattling atom `i` is carried out as a displacement by a fixed amount in x, y, or z directions
+
+    The magnitude of the final displacements is *directly* connected to `rattle_std`.
+    """
+
+    @requires(hiphive, "hiphive is required for FixedRandomDisplacementTransformation")
+    def __init__(self, rattle_std: float, seed: Optional[int] = None, **kwargs):
+        """
+        Args:
+            rattle_std: Rattle amplitude (fixed).
+                Note: this value is *directly* connected to the
+                final average displacement for the structures
+            seed: Seed for setting up NumPy random state from which random numbers
+                are generated. If ``None``, a random seed will be generated
+                (default). This option allows the output of this transformation
+                to be deterministic.
+            **kwargs: Additional keyword arguments to be passed to the hiPhive
+                mc_rattle function.
+        """
+        self.rattle_std = rattle_std
+        self.seed = seed
+
+        if not seed:
+            # if seed is None, use a random RandomState seed but make sure
+            # we store that the original seed was None
+            seed = np.random.randint(1, 1000000000)
+
+        self.random_state = np.random.RandomState(seed)  # pylint: disable=E1101
+        self.kwargs = kwargs
+
+    def apply_transformation(self, structure: Structure) -> Structure:
+        """
+        Apply the transformation.
+
+        Args:
+            structure: Input Structure
+
+        Returns:
+            Structure with sites perturbed.
+        """
+        from hiphive.structure_generation.random_displacement import generate_displaced_structures
+
+        atoms = AseAtomsAdaptor.get_atoms(structure)
+        transformed_atoms = generate_displaced_structures(atoms, 1, self.rattle_std)[0]
+        transformed_structure =  AseAtomsAdaptor.get_structure(transformed_atoms)
+#        seed = self.random_state.randint(1, 1000000000)
+#        displacements = mc_rattle(atoms, self.rattle_std, self.min_distance, seed=seed, **self.kwargs)
+
+#        transformed_structure = Structure(
+#            structure.lattice,
+#            structure.species,
+#            structure.cart_coords + displacements,
+#            coords_are_cartesian=True,
+#        )
+
+        return transformed_structure
+
+    def __str__(self):
+        return "{} : rattle_std = {}".format(__name__, self.rattle_std)
+
+    def __repr__(self):
+        return self.__str__()
+
+    @property
+    def inverse(self):
+        """
+        Returns: None
+        """
+        return None
+
+    @property
+    def is_one_to_many(self):
+        """
+        Returns: False
+        """
+        return False    
