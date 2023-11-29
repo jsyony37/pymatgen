@@ -1,13 +1,9 @@
-# coding: utf-8
-# Copyright (c) Pymatgen Development Team.
-# Distributed under the terms of the MIT License
+"""This module implements reading and writing of ShengBTE CONTROL files."""
 
-"""
-This module implements reading and writing of ShengBTE CONTROL files.
-"""
+from __future__ import annotations
 
 import warnings
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
 
 import numpy as np
 from monty.dev import requires
@@ -35,7 +31,7 @@ class Control(MSONable, dict):
     detailed description and default values of CONTROL arguments.
     """
 
-    required_params = [
+    required_params = data_keys = (
         "nelements",
         "natoms",
         "ngrid",
@@ -44,9 +40,9 @@ class Control(MSONable, dict):
         "elements",
         "positions",
         "scell",
-    ]
-    allocations_keys = ["nelements", "natoms", "ngrid", "norientations"]
-    crystal_keys = [
+    )
+    allocations_keys = ("nelements", "natoms", "ngrid", "norientations")
+    crystal_keys = (
         "lfactor",
         "lattvec",
         "types",
@@ -58,8 +54,8 @@ class Control(MSONable, dict):
         "born",
         "scell",
         "orientations",
-    ]
-    params_keys = [
+    )
+    params_keys = (
         "t",
         "t_min",
         "t_max",
@@ -72,8 +68,8 @@ class Control(MSONable, dict):
         "maxiter",
         "nticks",
         "eps",
-    ]
-    flags_keys = [
+    )
+    flags_keys = (
         "nonanalytic",
         "convergence",
         "isotopes",
@@ -81,9 +77,9 @@ class Control(MSONable, dict):
         "nanowires",
         "onlyharmonic",
         "espresso",
-    ]
+    )
 
-    def __init__(self, ngrid: Optional[List[int]] = None, temperature: Union[float, Dict[str, float]] = 300, **kwargs):
+    def __init__(self, ngrid: list[int] | None = None, temperature: float | dict[str, float] = 300, **kwargs):
         """
         Args:
             ngrid: Reciprocal space grid density as a list of 3 ints.
@@ -92,16 +88,13 @@ class Control(MSONable, dict):
                 with the keys "min", "max", "step".
             **kwargs: Other ShengBTE parameters. Several parameters are required
                 for ShengBTE to run - we have listed these parameters below:
-
                 - nelements (int): number of different elements in the compound
                 - natoms (int): number of atoms in the unit cell
-                - lattvec (size 3x3 array): real-space lattice vectors, in units
-                  of lfactor
+                - lattvec (size 3x3 array): real-space lattice vectors, in units of lfactor
                 - lfactor (float): unit of measurement for lattice vectors (nm).
                     I.e., set to 0.1 if lattvec given in Angstrom.
                 - types (size natom list): a vector of natom integers, ranging
-                  from 1 to nelements, assigning an element to each atom in the
-                  system
+                  from 1 to nelements, assigning an element to each atom in the system
                 - elements (size natom list): a vector of element names
                 - positions (size natomx3 array): atomic positions in lattice
                   coordinates
@@ -140,11 +133,11 @@ class Control(MSONable, dict):
     @classmethod
     @requires(
         f90nml,
-        "ShengBTE Control object requires f90nml to be installed. " "Please get it at https://pypi.org/project/f90nml.",
+        "ShengBTE Control object requires f90nml to be installed. Please get it at https://pypi.org/project/f90nml.",
     )
     def from_file(cls, filepath: str):
         """
-        Read a CONTROL namelist file and output a 'Control' object
+        Read a CONTROL namelist file and output a 'Control' object.
 
         Args:
             filepath: Path of the CONTROL file.
@@ -155,7 +148,7 @@ class Control(MSONable, dict):
         nml = f90nml.read(filepath)
         sdict = nml.todict()
 
-        all_dict: Dict[str, Any] = {}
+        all_dict: dict[str, Any] = {}
         all_dict.update(sdict["allocations"])
         all_dict.update(sdict["crystal"])
         all_dict.update(sdict["parameters"])
@@ -165,7 +158,7 @@ class Control(MSONable, dict):
         return cls.from_dict(all_dict)
 
     @classmethod
-    def from_dict(cls, control_dict: Dict):
+    def from_dict(cls, control_dict: dict):
         """
         Write a CONTROL file from a Python dictionary. Description and default
         parameters can be found at
@@ -180,19 +173,18 @@ class Control(MSONable, dict):
 
     @requires(
         f90nml,
-        "ShengBTE Control object requires f90nml to be installed. " "Please get it at https://pypi.org/project/f90nml.",
+        "ShengBTE Control object requires f90nml to be installed. Please get it at https://pypi.org/project/f90nml.",
     )
     def to_file(self, filename: str = "CONTROL"):
         """
-        Writes ShengBTE CONTROL file from 'Control' object
+        Writes ShengBTE CONTROL file from 'Control' object.
 
         Args:
             filename: A file name.
         """
-
         for param in self.required_params:
             if param not in self.as_dict():
-                warnings.warn("Required parameter '{}' not specified!".format(param))
+                warnings.warn(f"Required parameter {param!r} not specified!")
 
         alloc_dict = _get_subdict(self, self.allocations_keys)
         alloc_nml = f90nml.Namelist({"allocations": alloc_dict})
@@ -228,8 +220,7 @@ class Control(MSONable, dict):
         Returns:
             A ShengBTE control object.
         """
-
-        elements = list(map(str, structure.composition.elements))
+        elements = list(map(str, structure.elements))
 
         _, idx = np.unique(structure.atomic_numbers, return_index=True) 
         unique_nums = [structure.atomic_numbers[index] for index in sorted(idx)]
@@ -238,7 +229,7 @@ class Control(MSONable, dict):
 
         control_dict = {
             "nelements": structure.ntypesp,
-            "natoms": structure.num_sites,
+            "natoms": len(structure),
             "norientations": 0,
             "lfactor": 0.1,
             "lattvec": structure.lattice.matrix.tolist(),
@@ -267,7 +258,7 @@ class Control(MSONable, dict):
         """
         required = ["lattvec", "types", "elements", "positions"]
         if not all(r in self for r in required):
-            raise ValueError("All of ['lattvec', 'types', 'elements', 'positions'] must be " "in control object")
+            raise ValueError("All of ['lattvec', 'types', 'elements', 'positions'] must be in control object")
 
         unique_elements = self["elements"]
         n_unique_elements = len(unique_elements)
@@ -282,12 +273,10 @@ class Control(MSONable, dict):
         return Structure(cell, species, self["positions"])
 
     def as_dict(self):
-        """
-        Returns: MSONAble dict
-        """
+        """Returns: MSONable dict."""
         return dict(self)
 
 
 def _get_subdict(master_dict, subkeys):
-    """Helper method to get a set of keys from a larger dictionary"""
+    """Helper method to get a set of keys from a larger dictionary."""
     return {k: master_dict[k] for k in subkeys if k in master_dict and master_dict[k] is not None}

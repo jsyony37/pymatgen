@@ -1,10 +1,4 @@
-# coding: utf-8
-# Copyright (c) Pymatgen Development Team.
-# Distributed under the terms of the MIT License.
-
-
-"""
-This module implements various transmuter classes.
+"""This module implements various transmuter classes.
 Transmuters are essentially classes that generate TransformedStructures from
 various data sources. They enable the high-throughput generation of new
 structures and input files.
@@ -13,6 +7,19 @@ It also includes the helper function, batch_write_vasp_input to generate an
 entire directory of vasp input files for running.
 """
 
+from __future__ import annotations
+
+import os
+import re
+from multiprocessing import Pool
+from typing import TYPE_CHECKING, Callable
+
+from pymatgen.alchemy.materials import TransformedStructure
+from pymatgen.io.vasp.sets import MPRelaxSet, VaspInputSet
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
 __author__ = "Shyue Ping Ong, Will Richards"
 __copyright__ = "Copyright 2012, The Materials Project"
 __version__ = "0.1"
@@ -20,34 +27,24 @@ __maintainer__ = "Shyue Ping Ong"
 __email__ = "shyuep@gmail.com"
 __date__ = "Mar 4, 2012"
 
-import os
-import re
-from multiprocessing import Pool
-
-from pymatgen.alchemy.materials import TransformedStructure
-from pymatgen.io.vasp.sets import MPRelaxSet
-
 
 class StandardTransmuter:
-    """
-    An example of a Transmuter object, which performs a sequence of
+    """An example of a Transmuter object, which performs a sequence of
     transformations on many structures to generate TransformedStructures.
 
-    .. attribute: transformed_structures
-
-        List of all transformed structures.
+    Attributes:
+        transformed_structures (list[Structure]): List of all transformed structures.
     """
 
     def __init__(
         self,
         transformed_structures,
         transformations=None,
-        extend_collection=0,
-        ncores=None,
+        extend_collection: int = 0,
+        ncores: int | None = None,
     ):
-        """
-        Initializes a transmuter from an initial list of
-        :class:`pymatgen.alchemy.materials.TransformedStructure`.
+        """Initializes a transmuter from an initial list of
+        pymatgen.alchemy.materials.TransformedStructure.
 
         Args:
             transformed_structures ([TransformedStructure]): Input transformed
@@ -62,7 +59,6 @@ class StandardTransmuter:
                 Uses multiprocessing.Pool. Default is None, which implies
                 serial.
         """
-
         self.transformed_structures = transformed_structures
         self.ncores = ncores
         if transformations is not None:
@@ -76,8 +72,7 @@ class StandardTransmuter:
         return [getattr(x, name) for x in self.transformed_structures]
 
     def undo_last_change(self):
-        """
-        Undo the last transformation in the TransformedStructure.
+        """Undo the last transformation in the TransformedStructure.
 
         Raises:
             IndexError if already at the oldest change.
@@ -86,8 +81,7 @@ class StandardTransmuter:
             x.undo_last_change()
 
     def redo_next_change(self):
-        """
-        Redo the last undone transformation in the TransformedStructure.
+        """Redo the last undone transformation in the TransformedStructure.
 
         Raises:
             IndexError if already at the latest change.
@@ -99,36 +93,29 @@ class StandardTransmuter:
         return len(self.transformed_structures)
 
     def append_transformation(self, transformation, extend_collection=False, clear_redo=True):
-        """
-        Appends a transformation to all TransformedStructures.
+        """Appends a transformation to all TransformedStructures.
 
         Args:
             transformation: Transformation to append
             extend_collection: Whether to use more than one output structure
                 from one-to-many transformations. extend_collection can be a
-                number, which determines the maximum branching for each
-                transformation.
+                number, which determines the maximum branching for each transformation.
             clear_redo (bool): Whether to clear the redo list. By default,
                 this is True, meaning any appends clears the history of
                 undoing. However, when using append_transformation to do a
-                redo, the redo list should not be cleared to allow multiple
-                redos.
+                redo, the redo list should not be cleared to allow multiple redos.
 
         Returns:
-            List of booleans corresponding to initial transformed structures
-            each boolean describes whether the transformation altered the
-            structure
+            list[bool]: corresponding to initial transformed structures each boolean
+                describes whether the transformation altered the structure
         """
         if self.ncores and transformation.use_multiprocessing:
             with Pool(self.ncores) as p:
                 # need to condense arguments into single tuple to use map
-                z = map(
-                    lambda x: (x, transformation, extend_collection, clear_redo),
-                    self.transformed_structures,
-                )
-                new_tstructs = p.map(_apply_transformation, z, 1)
+                z = ((x, transformation, extend_collection, clear_redo) for x in self.transformed_structures)
+                nrafo_ew_tstructs = p.map(_apply_transformation, z, 1)
                 self.transformed_structures = []
-                for ts in new_tstructs:
+                for ts in nrafo_ew_tstructs:
                     self.transformed_structures.extend(ts)
         else:
             new_structures = []
@@ -139,8 +126,7 @@ class StandardTransmuter:
             self.transformed_structures.extend(new_structures)
 
     def extend_transformations(self, transformations):
-        """
-        Extends a sequence of transformations to the TransformedStructure.
+        """Extends a sequence of transformations to the TransformedStructure.
 
         Args:
             transformations: Sequence of Transformations
@@ -149,8 +135,7 @@ class StandardTransmuter:
             self.append_transformation(t)
 
     def apply_filter(self, structure_filter):
-        """
-        Applies a structure_filter to the list of TransformedStructures
+        """Applies a structure_filter to the list of TransformedStructures
         in the transmuter.
 
         Args:
@@ -165,18 +150,16 @@ class StandardTransmuter:
             ts.append_filter(structure_filter)
 
     def write_vasp_input(self, **kwargs):
-        r"""
-        Batch write vasp input for a sequence of transformed structures to
+        """Batch write vasp input for a sequence of transformed structures to
         output_dir, following the format output_dir/{formula}_{number}.
 
         Args:
-            \\*\\*kwargs: All kwargs supported by batch_write_vasp_input.
+            kwargs: All kwargs supported by batch_write_vasp_input.
         """
         batch_write_vasp_input(self.transformed_structures, **kwargs)
 
     def set_parameter(self, key, value):
-        """
-        Add parameters to the transmuter. Additional parameters are stored in
+        """Add parameters to the transmuter. Additional parameters are stored in
         the as_dict() output.
 
         Args:
@@ -187,8 +170,7 @@ class StandardTransmuter:
             x.other_parameters[key] = value
 
     def add_tags(self, tags):
-        """
-        Add tags for the structures generated by the transmuter.
+        """Add tags for the structures generated by the transmuter.
 
         Args:
             tags: A sequence of tags. Note that this should be a sequence of
@@ -202,27 +184,25 @@ class StandardTransmuter:
             output.append(str(x.final_structure))
         return "\n".join(output)
 
-    def append_transformed_structures(self, tstructs_or_transmuter):
-        """
-        Method is overloaded to accept either a list of transformed structures
+    def append_transformed_structures(self, trafo_structs_or_transmuter):
+        """Method is overloaded to accept either a list of transformed structures
         or transmuter, it which case it appends the second transmuter"s
         structures.
 
         Args:
-            tstructs_or_transmuter: A list of transformed structures or a
+            trafo_structs_or_transmuter: A list of transformed structures or a
                 transmuter.
         """
-        if isinstance(tstructs_or_transmuter, self.__class__):
-            self.transformed_structures.extend(tstructs_or_transmuter.transformed_structures)
+        if isinstance(trafo_structs_or_transmuter, self.__class__):
+            self.transformed_structures.extend(trafo_structs_or_transmuter.transformed_structures)
         else:
-            for ts in tstructs_or_transmuter:
+            for ts in trafo_structs_or_transmuter:
                 assert isinstance(ts, TransformedStructure)
-            self.transformed_structures.extend(tstructs_or_transmuter)
+            self.transformed_structures.extend(trafo_structs_or_transmuter)
 
-    @staticmethod
-    def from_structures(structures, transformations=None, extend_collection=0):
-        """
-        Alternative constructor from structures rather than
+    @classmethod
+    def from_structures(cls, structures, transformations=None, extend_collection=0):
+        """Alternative constructor from structures rather than
         TransformedStructures.
 
         Args:
@@ -237,23 +217,21 @@ class StandardTransmuter:
         Returns:
             StandardTransmuter
         """
-        tstruct = [TransformedStructure(s, []) for s in structures]
-        return StandardTransmuter(tstruct, transformations, extend_collection)
+        trafo_struct = [TransformedStructure(s, []) for s in structures]
+        return cls(trafo_struct, transformations, extend_collection)
 
 
 class CifTransmuter(StandardTransmuter):
-    """
-    Generates a Transmuter from a cif string, possibly containing multiple
+    """Generates a Transmuter from a cif string, possibly containing multiple
     structures.
     """
 
     def __init__(self, cif_string, transformations=None, primitive=True, extend_collection=False):
-        """
-        Generates a Transmuter from a cif string, possibly
+        """Generates a Transmuter from a cif string, possibly
         containing multiple structures.
 
         Args:
-            cif_string: A string containing a cif or a series of cifs
+            cif_string: A string containing a cif or a series of CIFs
             transformations: New transformations to be applied to all
                 structures
             primitive: Whether to generate the primitive cell from the cif.
@@ -273,14 +251,13 @@ class CifTransmuter(StandardTransmuter):
             if read_data:
                 structure_data[-1].append(line)
         for data in structure_data:
-            tstruct = TransformedStructure.from_cif_string("\n".join(data), [], primitive)
-            transformed_structures.append(tstruct)
+            trafo_struct = TransformedStructure.from_cif_string("\n".join(data), [], primitive)
+            transformed_structures.append(trafo_struct)
         super().__init__(transformed_structures, transformations, extend_collection)
 
-    @staticmethod
-    def from_filenames(filenames, transformations=None, primitive=True, extend_collection=False):
-        """
-        Generates a TransformedStructureCollection from a cif, possibly
+    @classmethod
+    def from_filenames(cls, filenames, transformations=None, primitive=True, extend_collection=False):
+        """Generates a TransformedStructureCollection from a cif, possibly
         containing multiple structures.
 
         Args:
@@ -290,13 +267,12 @@ class CifTransmuter(StandardTransmuter):
             primitive: Same meaning as in __init__.
             extend_collection: Same meaning as in __init__.
         """
-
-        allcifs = []
+        cif_files = []
         for fname in filenames:
-            with open(fname, "r") as f:
-                allcifs.append(f.read())
-        return CifTransmuter(
-            "\n".join(allcifs),
+            with open(fname) as file:
+                cif_files.append(file.read())
+        return cls(
+            "\n".join(cif_files),
             transformations,
             primitive=primitive,
             extend_collection=extend_collection,
@@ -304,9 +280,7 @@ class CifTransmuter(StandardTransmuter):
 
 
 class PoscarTransmuter(StandardTransmuter):
-    """
-    Generates a transmuter from a sequence of POSCARs.
-    """
+    """Generates a transmuter from a sequence of POSCARs."""
 
     def __init__(self, poscar_string, transformations=None, extend_collection=False):
         """
@@ -317,13 +291,12 @@ class PoscarTransmuter(StandardTransmuter):
             extend_collection: Whether to use more than one output structure
                 from one-to-many transformations.
         """
-        tstruct = TransformedStructure.from_poscar_string(poscar_string, [])
-        super().__init__([tstruct], transformations, extend_collection=extend_collection)
+        trafo_struct = TransformedStructure.from_poscar_string(poscar_string, [])
+        super().__init__([trafo_struct], transformations, extend_collection=extend_collection)
 
     @staticmethod
     def from_filenames(poscar_filenames, transformations=None, extend_collection=False):
-        """
-        Convenient constructor to generates a POSCAR transmuter from a list of
+        """Convenient constructor to generates a POSCAR transmuter from a list of
         POSCAR filenames.
 
         Args:
@@ -333,29 +306,28 @@ class PoscarTransmuter(StandardTransmuter):
             extend_collection:
                 Same meaning as in __init__.
         """
-        tstructs = []
+        trafo_structs = []
         for filename in poscar_filenames:
-            with open(filename, "r") as f:
-                tstructs.append(TransformedStructure.from_poscar_string(f.read(), []))
-        return StandardTransmuter(tstructs, transformations, extend_collection=extend_collection)
+            with open(filename) as f:
+                trafo_structs.append(TransformedStructure.from_poscar_string(f.read(), []))
+        return StandardTransmuter(trafo_structs, transformations, extend_collection=extend_collection)
 
 
 def batch_write_vasp_input(
-    transformed_structures,
-    vasp_input_set=MPRelaxSet,
-    output_dir=".",
-    create_directory=True,
-    subfolder=None,
-    include_cif=False,
+    transformed_structures: Sequence[TransformedStructure],
+    vasp_input_set: type[VaspInputSet] = MPRelaxSet,
+    output_dir: str = ".",
+    create_directory: bool = True,
+    subfolder: Callable[[TransformedStructure], str] | None = None,
+    include_cif: bool = False,
     **kwargs,
 ):
-    """
-    Batch write vasp input for a sequence of transformed structures to
+    """Batch write vasp input for a sequence of transformed structures to
     output_dir, following the format output_dir/{group}/{formula}_{number}.
 
     Args:
         transformed_structures: Sequence of TransformedStructures.
-        vasp_input_set: pymatgen.io.vaspio_set.VaspInputSet to creates
+        vasp_input_set: pymatgen.io.vasp.sets.VaspInputSet to creates
             vasp input files from structures.
         output_dir: Directory to output files
         create_directory (bool): Create the directory if not present.
@@ -367,25 +339,25 @@ def batch_write_vasp_input(
         include_cif (bool): Boolean indication whether to output a CIF as
             well. CIF files are generally better supported in visualization
             programs.
+        **kwargs: Any kwargs supported by vasp_input_set.
     """
-    for i, s in enumerate(transformed_structures):
-        formula = re.sub(r"\s+", "", s.final_structure.formula)
+    for idx, struct in enumerate(transformed_structures):
+        formula = re.sub(r"\s+", "", struct.final_structure.formula)
         if subfolder is not None:
-            subdir = subfolder(s)
-            dirname = os.path.join(output_dir, subdir, "{}_{}".format(formula, i))
+            subdir = subfolder(struct)
+            dirname = f"{output_dir}/{subdir}/{formula}_{idx}"
         else:
-            dirname = os.path.join(output_dir, "{}_{}".format(formula, i))
-        s.write_vasp_input(vasp_input_set, dirname, create_directory=create_directory, **kwargs)
+            dirname = f"{output_dir}/{formula}_{idx}"
+        struct.write_vasp_input(vasp_input_set, dirname, create_directory=create_directory, **kwargs)
         if include_cif:
             from pymatgen.io.cif import CifWriter
 
-            writer = CifWriter(s.final_structure)
-            writer.write_file(os.path.join(dirname, "{}.cif".format(formula)))
+            writer = CifWriter(struct.final_structure)
+            writer.write_file(os.path.join(dirname, f"{formula}.cif"))
 
 
 def _apply_transformation(inputs):
-    """
-    Helper method for multiprocessing of apply_transformation. Must not be
+    """Helper method for multiprocessing of apply_transformation. Must not be
     in the class so that it can be pickled.
 
     Args:
@@ -394,8 +366,8 @@ def _apply_transformation(inputs):
             collection, and a boolean indicating whether to clear the redo
 
     Returns:
-        List of output structures (the modified initial structure, plus
-        any new structures created by a one-to-many transformation)
+        list[Structure]: the modified initial structure, plus
+            any new structures created by a one-to-many transformation
     """
     ts, transformation, extend_collection, clear_redo = inputs
     new = ts.append_transformation(transformation, extend_collection, clear_redo=clear_redo)

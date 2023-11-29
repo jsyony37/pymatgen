@@ -1,46 +1,59 @@
-# coding: utf-8
-# Copyright (c) Pymatgen Development Team.
-# Distributed under the terms of the MIT License.
-"""
-Utilities for generating nicer plots.
-"""
+"""Utilities for generating nicer plots."""
+
+from __future__ import annotations
+
+import importlib
 import math
+from functools import wraps
+from string import ascii_letters
+from typing import TYPE_CHECKING, Literal
 
+import matplotlib.pyplot as plt
 import numpy as np
+import palettable.colorbrewer.diverging
+from matplotlib import cm, colors
 
-from pymatgen.core.periodic_table import Element
+from pymatgen.core import Element
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from matplotlib.axes import Axes
+    from matplotlib.figure import Figure
+    from mpl_toolkits.mplot3d.axes3d import Axes3D
+    from numpy.typing import ArrayLike
 
 
-def pretty_plot(width=8, height=None, plt=None, dpi=None, color_cycle=("qualitative", "Set1_9")):
-    """
-    Provides a publication quality plot, with nice defaults for font sizes etc.
+def pretty_plot(
+    width: float = 8,
+    height: float | None = None,
+    ax: Axes = None,
+    dpi: float | None = None,
+    color_cycle: tuple[str, str] = ("qualitative", "Set1_9"),
+) -> Axes:
+    """Provides a publication quality plot, with nice defaults for font sizes etc.
 
     Args:
         width (float): Width of plot in inches. Defaults to 8in.
         height (float): Height of plot in inches. Defaults to width * golden
             ratio.
-        plt (matplotlib.pyplot): If plt is supplied, changes will be made to an
+        ax (Axes): If ax is supplied, changes will be made to an
             existing plot. Otherwise, a new plot will be created.
-        dpi (int): Sets dot per inch for figure. Defaults to 300.
+        dpi (float): Sets dot per inch for figure. Defaults to 300.
         color_cycle (tuple): Set the color cycle for new plots to one of the
             color sets in palettable. Defaults to a qualitative Set1_9.
 
     Returns:
-        Matplotlib plot object with properly sized fonts.
+        Axes: matplotlib axes object with properly sized fonts.
     """
-    ticksize = int(width * 2.5)
-
+    tick_size = int(width * 2.5)
     golden_ratio = (math.sqrt(5) - 1) / 2
 
     if not height:
         height = int(width * golden_ratio)
 
-    if plt is None:
-        import importlib
-
-        import matplotlib.pyplot as plt
-
-        mod = importlib.import_module("palettable.colorbrewer.%s" % color_cycle[0])
+    if ax is None:
+        mod = importlib.import_module(f"palettable.colorbrewer.{color_cycle[0]}")
         colors = getattr(mod, color_cycle[1]).mpl_colors
         from cycler import cycler
 
@@ -50,25 +63,32 @@ def pretty_plot(width=8, height=None, plt=None, dpi=None, color_cycle=("qualitat
     else:
         fig = plt.gcf()
         fig.set_size_inches(width, height)
-    plt.xticks(fontsize=ticksize)
-    plt.yticks(fontsize=ticksize)
 
-    ax = plt.gca()
+    plt.xticks(fontsize=tick_size)
+    plt.yticks(fontsize=tick_size)
+
     ax.set_title(ax.get_title(), size=width * 4)
 
-    labelsize = int(width * 3)
+    label_size = int(width * 3)
+    ax.set_xlabel(ax.get_xlabel(), size=label_size)
+    ax.set_ylabel(ax.get_ylabel(), size=label_size)
 
-    ax.set_xlabel(ax.get_xlabel(), size=labelsize)
-    ax.set_ylabel(ax.get_ylabel(), size=labelsize)
-
-    return plt
+    return ax
 
 
 def pretty_plot_two_axis(
-    x, y1, y2, xlabel=None, y1label=None, y2label=None, width=8, height=None, dpi=300, **plot_kwargs
+    x,
+    y1,
+    y2,
+    xlabel=None,
+    y1label=None,
+    y2label=None,
+    width: float = 8,
+    height: float | None = None,
+    dpi=300,
+    **plot_kwargs,
 ):
-    """
-    Variant of pretty_plot that does a dual axis plot. Adapted from matplotlib
+    """Variant of pretty_plot that does a dual axis plot. Adapted from matplotlib
     examples. Makes it easier to create plots with different axes.
 
     Args:
@@ -90,9 +110,6 @@ def pretty_plot_two_axis(
     Returns:
         matplotlib.pyplot
     """
-    # pylint: disable=E1101
-    import palettable.colorbrewer.diverging
-
     colors = palettable.colorbrewer.diverging.RdYlBu_4.mpl_colors
     c1 = colors[0]
     c2 = colors[-1]
@@ -101,8 +118,6 @@ def pretty_plot_two_axis(
 
     if not height:
         height = int(width * golden_ratio)
-
-    import matplotlib.pyplot as plt
 
     width = 12
     labelsize = int(width * 3)
@@ -114,8 +129,8 @@ def pretty_plot_two_axis(
     if dpi:
         fig.set_dpi(dpi)
     if isinstance(y1, dict):
-        for i, (k, v) in enumerate(y1.items()):
-            ax1.plot(x, v, c=c1, marker="s", ls=styles[i % len(styles)], label=k, **plot_kwargs)
+        for idx, (key, val) in enumerate(y1.items()):
+            ax1.plot(x, val, c=c1, marker="s", ls=styles[idx % len(styles)], label=key, **plot_kwargs)
         ax1.legend(fontsize=labelsize)
     else:
         ax1.plot(x, y1, c=c1, marker="s", ls="-", **plot_kwargs)
@@ -132,8 +147,8 @@ def pretty_plot_two_axis(
 
     ax2 = ax1.twinx()
     if isinstance(y2, dict):
-        for i, (k, v) in enumerate(y2.items()):
-            ax2.plot(x, v, c=c2, marker="o", ls=styles[i % len(styles)], label=k)
+        for idx, (key, val) in enumerate(y2.items()):
+            ax2.plot(x, val, c=c2, marker="o", ls=styles[idx % len(styles)], label=key)
         ax2.legend(fontsize=labelsize)
     else:
         ax2.plot(x, y2, c=c2, marker="o", ls="-")
@@ -146,9 +161,8 @@ def pretty_plot_two_axis(
     return plt
 
 
-def pretty_polyfit_plot(x, y, deg=1, xlabel=None, ylabel=None, **kwargs):
-    r"""
-    Convenience method to plot data with trend lines based on polynomial fit.
+def pretty_polyfit_plot(x: ArrayLike, y: ArrayLike, deg: int = 1, xlabel=None, ylabel=None, **kwargs):
+    """Convenience method to plot data with trend lines based on polynomial fit.
 
     Args:
         x: Sequence of x data.
@@ -156,57 +170,126 @@ def pretty_polyfit_plot(x, y, deg=1, xlabel=None, ylabel=None, **kwargs):
         deg (int): Degree of polynomial. Defaults to 1.
         xlabel (str): Label for x-axis.
         ylabel (str): Label for y-axis.
-        \\*\\*kwargs: Keyword args passed to pretty_plot.
+        kwargs: Keyword args passed to pretty_plot.
 
     Returns:
         matplotlib.pyplot object.
     """
-    plt = pretty_plot(**kwargs)
+    ax = pretty_plot(**kwargs)
     pp = np.polyfit(x, y, deg)
     xp = np.linspace(min(x), max(x), 200)
-    plt.plot(xp, np.polyval(pp, xp), "k--", x, y, "o")
+    ax.plot(xp, np.polyval(pp, xp), "k--", x, y, "o")
     if xlabel:
-        plt.xlabel(xlabel)
+        ax.set_xlabel(xlabel)
     if ylabel:
-        plt.ylabel(ylabel)
-    return plt
+        ax.set_ylabel(ylabel)
+    return ax
+
+
+def _decide_fontcolor(rgba: tuple) -> Literal["black", "white"]:
+    red, green, blue, _ = rgba
+    if red * 0.299 + green * 0.587 + blue * 0.114 > (186 / 255):
+        return "black"
+
+    return "white"
 
 
 def periodic_table_heatmap(
-    elemental_data,
+    elemental_data=None,
     cbar_label="",
     cbar_label_size=14,
-    show_plot=False,
+    show_plot: bool = False,
     cmap="YlOrRd",
     cmap_range=None,
     blank_color="grey",
+    edge_color="white",
     value_format=None,
-    max_row=9,
+    value_fontsize=10,
+    symbol_fontsize=14,
+    max_row: int = 9,
+    readable_fontcolor=False,
+    pymatviz: bool = True,
+    **kwargs,
 ):
-    """
-    A static method that generates a heat map overlayed on a periodic table.
+    """A static method that generates a heat map overlaid on a periodic table.
 
     Args:
-         elemental_data (dict): A dictionary with the element as a key and a
+        elemental_data (dict): A dictionary with the element as a key and a
             value assigned to it, e.g. surface energy and frequency, etc.
             Elements missing in the elemental_data will be grey by default
             in the final table elemental_data={"Fe": 4.2, "O": 5.0}.
-         cbar_label (string): Label of the colorbar. Default is "".
-         cbar_label_size (float): Font size for the colorbar label. Default is 14.
-         cmap_range (tuple): Minimum and maximum value of the colormap scale.
-            If None, the colormap will autotmatically scale to the range of the
+        cbar_label (str): Label of the color bar. Default is "".
+        cbar_label_size (float): Font size for the color bar label. Default is 14.
+        cmap_range (tuple): Minimum and maximum value of the color map scale.
+            If None, the color map will automatically scale to the range of the
             data.
-         show_plot (bool): Whether to show the heatmap. Default is False.
-         value_format (str): Formatting string to show values. If None, no value
+        show_plot (bool): Whether to show the heatmap. Default is False.
+        value_format (str): Formatting string to show values. If None, no value
             is shown. Example: "%.4f" shows float to four decimals.
-         cmap (string): Color scheme of the heatmap. Default is 'YlOrRd'.
+        value_fontsize (float): Font size for values. Default is 10.
+        symbol_fontsize (float): Font size for element symbols. Default is 14.
+        cmap (str): Color scheme of the heatmap. Default is 'YlOrRd'.
             Refer to the matplotlib documentation for other options.
-         blank_color (string): Color assigned for the missing elements in
+        blank_color (str): Color assigned for the missing elements in
             elemental_data. Default is "grey".
-         max_row (integer): Maximum number of rows of the periodic table to be
+        edge_color (str): Color assigned for the edge of elements in the
+            periodic table. Default is "white".
+        max_row (int): Maximum number of rows of the periodic table to be
             shown. Default is 9, which means the periodic table heat map covers
-            the first 9 rows of elements.
+            the standard 7 rows of the periodic table + 2 rows for the lanthanides
+            and actinides. Use a value of max_row = 7 to exclude the lanthanides and
+            actinides.
+        readable_fontcolor (bool): Whether to use readable font color depending
+            on background color. Default is False.
+        pymatviz (bool): Whether to use pymatviz to generate the heatmap. Defaults to True.
+            See https://github.com/janosh/pymatviz.
+        kwargs: Passed to pymatviz.ptable_heatmap_plotly
     """
+    if pymatviz:
+        try:
+            from pymatviz import ptable_heatmap_plotly
+
+            if elemental_data:
+                kwargs.setdefault("elem_values", elemental_data)
+                print('elemental_data is deprecated, use elem_values={"Fe": 4.2, "O": 5.0} instead')
+            if cbar_label:
+                kwargs.setdefault("color_bar", {}).setdefault("title", cbar_label)
+                print('cbar_label is deprecated, use color_bar={"title": cbar_label} instead')
+            if cbar_label_size != 14:
+                kwargs.setdefault("color_bar", {}).setdefault("titlefont", {}).setdefault("size", cbar_label_size)
+                print('cbar_label_size is deprecated, use color_bar={"titlefont": {"size": cbar_label_size}} instead')
+            if cmap:
+                kwargs.setdefault("colorscale", cmap)
+                print("cmap is deprecated, use colorscale=cmap instead")
+            if cmap_range:
+                kwargs.setdefault("cscale_range", cmap_range)
+                print("cmap_range is deprecated, use cscale_range instead")
+            if value_format:
+                kwargs.setdefault("precision", value_format)
+                print("value_format is deprecated, use precision instead")
+            if blank_color != "grey":
+                print("blank_color is deprecated")
+            if edge_color != "white":
+                print("edge_color is deprecated")
+            if symbol_fontsize != 14:
+                print("symbol_fontsize is deprecated, use font_size instead")
+                kwargs.setdefault("font_size", symbol_fontsize)
+            if value_fontsize != 10:
+                print("value_fontsize is deprecated, use font_size instead")
+                kwargs.setdefault("font_size", value_fontsize)
+            if max_row != 9:
+                print("max_row is deprecated, use max_row instead")
+            if readable_fontcolor:
+                print("readable_fontcolor is deprecated, use font_colors instead, e.g. ('black', 'white')")
+
+            return ptable_heatmap_plotly(**kwargs)
+        except ImportError:
+            print(
+                "You're using a deprecated version of periodic_table_heatmap(). Consider `pip install pymatviz` which "
+                "offers an interactive plotly periodic table heatmap. You can keep calling this same function from "
+                "pymatgen. Some of the arguments have changed which you'll be warned about. "
+                "To disable this warning, pass pymatviz=False."
+            )
 
     # Convert primitive_elemental data in the form of numpy array for plotting.
     if cmap_range is not None:
@@ -225,13 +308,19 @@ def periodic_table_heatmap(
     blank_value = min_val - 0.01
 
     for el in Element:
-        if el.row > max_row:
-            continue
         value = elemental_data.get(el.symbol, blank_value)
-        value_table[el.row - 1, el.group - 1] = value
-
-    # Initialize the plt object
-    import matplotlib.pyplot as plt
+        if 57 <= el.Z <= 71:
+            plot_row = 8
+            plot_group = (el.Z - 54) % 32
+        elif 89 <= el.Z <= 103:
+            plot_row = 9
+            plot_group = (el.Z - 54) % 32
+        else:
+            plot_row = el.row
+            plot_group = el.group
+        if plot_row > max_row:
+            continue
+        value_table[plot_row - 1, plot_group - 1] = value
 
     fig, ax = plt.subplots()
     plt.gcf().set_size_inches(12, 8)
@@ -241,7 +330,7 @@ def periodic_table_heatmap(
     heatmap = ax.pcolor(
         data_mask,
         cmap=cmap,
-        edgecolors="w",
+        edgecolors=edge_color,
         linewidths=1,
         vmin=min_val - 0.001,
         vmax=max_val + 0.001,
@@ -259,18 +348,25 @@ def periodic_table_heatmap(
     ax.axis("off")
     ax.invert_yaxis()
 
+    # Set the scalarmap for fontcolor
+    norm = colors.Normalize(vmin=min_val, vmax=max_val)
+    scalar_cmap = cm.ScalarMappable(norm=norm, cmap=cmap)
+
     # Label each block with corresponding element and value
     for i, row in enumerate(value_table):
         for j, el in enumerate(row):
             if not np.isnan(el):
                 symbol = Element.from_row_and_group(i + 1, j + 1).symbol
+                rgba = scalar_cmap.to_rgba(el)
+                fontcolor = _decide_fontcolor(rgba) if readable_fontcolor else "black"
                 plt.text(
                     j + 0.5,
                     i + 0.25,
                     symbol,
                     horizontalalignment="center",
                     verticalalignment="center",
-                    fontsize=14,
+                    fontsize=symbol_fontsize,
+                    color=fontcolor,
                 )
                 if el != blank_value and value_format is not None:
                     plt.text(
@@ -279,7 +375,8 @@ def periodic_table_heatmap(
                         value_format % el,
                         horizontalalignment="center",
                         verticalalignment="center",
-                        fontsize=10,
+                        fontsize=value_fontsize,
+                        color=fontcolor,
                     )
 
     plt.tight_layout()
@@ -290,23 +387,21 @@ def periodic_table_heatmap(
     return plt
 
 
-def format_formula(formula):
-    """
-    Converts str of chemical formula into
-    latex format for labelling purposes
+def format_formula(formula: str) -> str:
+    """Converts str of chemical formula into
+    latex format for labelling purposes.
 
     Args:
         formula (str): Chemical formula
     """
-
     formatted_formula = ""
     number_format = ""
-    for i, s in enumerate(formula):
-        if s.isdigit():
+    for idx, char in enumerate(formula):
+        if char.isdigit():
             if not number_format:
                 number_format = "_{"
-            number_format += s
-            if i == len(formula) - 1:
+            number_format += char
+            if idx == len(formula) - 1:
                 number_format += "}"
                 formatted_formula += number_format
         else:
@@ -314,42 +409,35 @@ def format_formula(formula):
                 number_format += "}"
                 formatted_formula += number_format
                 number_format = ""
-            formatted_formula += s
+            formatted_formula += char
 
-    return r"$%s$" % (formatted_formula)
+    return f"${formatted_formula}$"
 
 
-def van_arkel_triangle(list_of_materials, annotate=True):
-    """
-    A static method that generates a binary van Arkel-Ketelaar triangle to
+def van_arkel_triangle(list_of_materials: Sequence, annotate: bool = True):
+    """A static method that generates a binary van Arkel-Ketelaar triangle to
         quantify the ionic, metallic and covalent character of a compound
         by plotting the electronegativity difference (y) vs average (x).
         See:
             A.E. van Arkel, Molecules and Crystals in Inorganic Chemistry,
                 Interscience, New York (1956)
         and
-            J.A.A Ketelaar, Chemical Constitution (2nd edn.), An Introduction
-                to the Theory of the Chemical Bond, Elsevier, New York (1958)
+            J.A.A Ketelaar, Chemical Constitution (2nd edition), An Introduction
+                to the Theory of the Chemical Bond, Elsevier, New York (1958).
 
     Args:
-         list_of_materials (list): A list of computed entries of binary
+        list_of_materials (list): A list of computed entries of binary
             materials or a list of lists containing two elements (str).
-         annotate (bool): Whether or not to lable the points on the
+        annotate (bool): Whether or not to label the points on the
             triangle with reduced formula (if list of entries) or pair
             of elements (if list of list of str).
     """
-
     # F-Fr has the largest X difference. We set this
     # as our top corner of the triangle (most ionic)
     pt1 = np.array([(Element("F").X + Element("Fr").X) / 2, abs(Element("F").X - Element("Fr").X)])
     # Cs-Fr has the lowest average X. We set this as our
     # bottom left corner of the triangle (most metallic)
-    pt2 = np.array(
-        [
-            (Element("Cs").X + Element("Fr").X) / 2,
-            abs(Element("Cs").X - Element("Fr").X),
-        ]
-    )
+    pt2 = np.array([(Element("Cs").X + Element("Fr").X) / 2, abs(Element("Cs").X - Element("Fr").X)])
     # O-F has the highest average X. We set this as our
     # bottom right corner of the triangle (most covalent)
     pt3 = np.array([(Element("O").X + Element("F").X) / 2, abs(Element("O").X - Element("F").X)])
@@ -361,9 +449,6 @@ def van_arkel_triangle(list_of_materials, annotate=True):
     d = pt3 - pt1
     slope2 = d[1] / d[0]
     b2 = pt3[1] - slope2 * pt3[0]
-
-    # Initialize the plt object
-    import matplotlib.pyplot as plt
 
     # set labels and appropriate limits for plot
     plt.xlim(pt2[0] - 0.45, -b2 / slope2 + 0.45)
@@ -387,7 +472,7 @@ def van_arkel_triangle(list_of_materials, annotate=True):
     plt.xticks(fontsize=15)
     plt.yticks(fontsize=15)
 
-    # Shade with appropriate colors corresponding to ionic, metallci and covalent
+    # Shade with appropriate colors corresponding to ionic, metallic and covalent
     ax = plt.gca()
     # ionic filling
     ax.fill_between(
@@ -405,32 +490,32 @@ def van_arkel_triangle(list_of_materials, annotate=True):
         edgecolor=[1, 1, 0],
     )
     # metal filling
-    XPt = Element("Pt").X
+    x_pt = Element("Pt").X
     ax.fill_between(
-        [min(chi_list), (XPt + min(chi_list)) / 2],
-        [0, slope1 * (XPt + min(chi_list)) / 2 + b1],
+        [min(chi_list), (x_pt + min(chi_list)) / 2],
+        [0, slope1 * (x_pt + min(chi_list)) / 2 + b1],
         facecolor=[1, 0, 0],
         zorder=-3,
         alpha=0.8,
     )
     ax.fill_between(
-        [(XPt + min(chi_list)) / 2, XPt],
-        [slope1 * ((XPt + min(chi_list)) / 2) + b1, 0],
+        [(x_pt + min(chi_list)) / 2, x_pt],
+        [slope1 * ((x_pt + min(chi_list)) / 2) + b1, 0],
         facecolor=[1, 0, 0],
         zorder=-3,
         alpha=0.8,
     )
     # covalent filling
     ax.fill_between(
-        [(XPt + min(chi_list)) / 2, ((XPt + min(chi_list)) / 2 + -b2 / slope2) / 2],
-        [0, slope2 * (((XPt + min(chi_list)) / 2 + -b2 / slope2) / 2) + b2],
+        [(x_pt + min(chi_list)) / 2, ((x_pt + min(chi_list)) / 2 + -b2 / slope2) / 2],
+        [0, slope2 * (((x_pt + min(chi_list)) / 2 + -b2 / slope2) / 2) + b2],
         facecolor=[0, 1, 0],
         zorder=-4,
         alpha=0.8,
     )
     ax.fill_between(
-        [((XPt + min(chi_list)) / 2 + -b2 / slope2) / 2, -b2 / slope2],
-        [slope2 * (((XPt + min(chi_list)) / 2 + -b2 / slope2) / 2) + b2, 0],
+        [((x_pt + min(chi_list)) / 2 + -b2 / slope2) / 2, -b2 / slope2],
+        [slope2 * (((x_pt + min(chi_list)) / 2 + -b2 / slope2) / 2) + b2, 0],
         facecolor=[0, 1, 0],
         zorder=-4,
         alpha=0.8,
@@ -440,9 +525,10 @@ def van_arkel_triangle(list_of_materials, annotate=True):
     for entry in list_of_materials:
         if type(entry).__name__ not in ["ComputedEntry", "ComputedStructureEntry"]:
             X_pair = [Element(el).X for el in entry]
-            formatted_formula = "%s-%s" % tuple(entry)
+            el_1, el_2 = entry
+            formatted_formula = f"{el_1}-{el_2}"
         else:
-            X_pair = [Element(el).X for el in entry.composition.as_dict().keys()]
+            X_pair = [Element(el).X for el in entry.composition.as_dict()]
             formatted_formula = format_formula(entry.composition.reduced_formula)
         plt.scatter(np.mean(X_pair), abs(X_pair[0] - X_pair[1]), c="b", s=100)
         if annotate:
@@ -456,73 +542,69 @@ def van_arkel_triangle(list_of_materials, annotate=True):
     return plt
 
 
-def get_ax_fig_plt(ax=None, **kwargs):
-    """
-    Helper function used in plot functions supporting an optional Axes argument.
+def get_ax_fig(ax: Axes = None, **kwargs) -> tuple[Axes, Figure]:
+    """Helper function used in plot functions supporting an optional Axes argument.
     If ax is None, we build the `matplotlib` figure and create the Axes else
     we return the current active figure.
 
     Args:
+        ax (Axes, optional): Axes object. Defaults to None.
         kwargs: keyword arguments are passed to plt.figure if ax is not None.
 
     Returns:
-        ax: :class:`Axes` object
-        figure: matplotlib figure
-        plt: matplotlib pyplot module.
+        tuple[Axes, Figure]: matplotlib Axes object and Figure objects
     """
-    import matplotlib.pyplot as plt
-
     if ax is None:
         fig = plt.figure(**kwargs)
-        ax = fig.add_subplot(1, 1, 1)
+        ax = fig.gca()
     else:
         fig = plt.gcf()
 
-    return ax, fig, plt
+    return ax, fig
 
 
-def get_ax3d_fig_plt(ax=None, **kwargs):
-    """
-    Helper function used in plot functions supporting an optional Axes3D
+def get_ax3d_fig(ax: Axes = None, **kwargs) -> tuple[Axes3D, Figure]:
+    """Helper function used in plot functions supporting an optional Axes3D
     argument. If ax is None, we build the `matplotlib` figure and create the
     Axes3D else we return the current active figure.
 
     Args:
+        ax (Axes3D, optional): Axes3D object. Defaults to None.
         kwargs: keyword arguments are passed to plt.figure if ax is not None.
 
     Returns:
-        ax: :class:`Axes` object
-        figure: matplotlib figure
-        plt: matplotlib pyplot module.
+        tuple[Axes3D, Figure]: matplotlib Axes3D and corresponding figure objects
     """
-    import matplotlib.pyplot as plt
-    from mpl_toolkits.mplot3d import axes3d
-
     if ax is None:
         fig = plt.figure(**kwargs)
-        ax = axes3d.Axes3D(fig)
+        ax = fig.add_subplot(projection="3d")
     else:
         fig = plt.gcf()
 
-    return ax, fig, plt
+    return ax, fig
 
 
 def get_axarray_fig_plt(
-    ax_array, nrows=1, ncols=1, sharex=False, sharey=False, squeeze=True, subplot_kw=None, gridspec_kw=None, **fig_kw
+    ax_array,
+    nrows=1,
+    ncols=1,
+    sharex: bool = False,
+    sharey: bool = False,
+    squeeze: bool = True,
+    subplot_kw=None,
+    gridspec_kw=None,
+    **fig_kw,
 ):
-    """
-    Helper function used in plot functions that accept an optional array of Axes
+    """Helper function used in plot functions that accept an optional array of Axes
     as argument. If ax_array is None, we build the `matplotlib` figure and
     create the array of Axes by calling plt.subplots else we return the
     current active figure.
 
     Returns:
-        ax: Array of :class:`Axes` objects
+        ax: Array of Axes objects
         figure: matplotlib figure
         plt: matplotlib pyplot module.
     """
-    import matplotlib.pyplot as plt
-
     if ax_array is None:
         fig, ax_array = plt.subplots(
             nrows=nrows,
@@ -547,15 +629,13 @@ def get_axarray_fig_plt(
 
 
 def add_fig_kwargs(func):
-    """
-    Decorator that adds keyword arguments for functions returning matplotlib
+    """Decorator that adds keyword arguments for functions returning matplotlib
     figures.
 
     The function should return either a matplotlib figure or None to signal
     some sort of error/unexpected event.
     See doc string below for the list of supported options.
     """
-    from functools import wraps
 
     @wraps(func)
     def wrapper(*args, **kwargs):
@@ -586,13 +666,11 @@ def add_fig_kwargs(func):
                 ax.grid(bool(ax_grid))
 
         if ax_annotate:
-            from string import ascii_letters
-
             tags = ascii_letters
             if len(fig.axes) > len(tags):
                 tags = (1 + len(ascii_letters) // len(fig.axes)) * ascii_letters
             for ax, tag in zip(fig.axes, tags):
-                ax.annotate("(%s)" % tag, xy=(0.05, 0.95), xycoords="axes fraction")
+                ax.annotate(f"({tag})", xy=(0.05, 0.95), xycoords="axes fraction")
 
         if tight_layout:
             try:
@@ -605,8 +683,6 @@ def add_fig_kwargs(func):
         if savefig:
             fig.savefig(savefig)
 
-        import matplotlib.pyplot as plt
-
         if show:
             plt.show()
         if fig_close:
@@ -615,9 +691,7 @@ def add_fig_kwargs(func):
         return fig
 
     # Add docstring to the decorated method.
-    s = (
-        "\n\n"
-        + """\
+    s = """\n\n
         Keyword arguments controlling the display of the figure:
 
         ================  ====================================================
@@ -637,7 +711,6 @@ def add_fig_kwargs(func):
         ================  ====================================================
 
 """
-    )
 
     if wrapper.__doc__ is not None:
         # Add s at the end of the docstring.
