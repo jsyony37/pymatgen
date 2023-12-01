@@ -1,11 +1,9 @@
-# coding: utf-8
-# Copyright (c) Pymatgen Development Team.
-# Distributed under the terms of the MIT License.
-
 """
 This module provides classes for representing species substitution
 probabilities.
 """
+
+from __future__ import annotations
 
 import functools
 import itertools
@@ -18,7 +16,8 @@ from operator import mul
 
 from monty.design_patterns import cached_class
 
-from pymatgen.core.periodic_table import Species, get_el_sp
+from pymatgen.core import Species, get_el_sp
+from pymatgen.util.due import Doi, due
 
 __author__ = "Will Richards, Geoffroy Hautier"
 __copyright__ = "Copyright 2012, The Materials Project"
@@ -28,6 +27,10 @@ __email__ = "wrichard@mit.edu"
 __date__ = "Aug 31, 2012"
 
 
+@due.dcite(
+    Doi("10.1021/ic102031h"),
+    description="Data Mined Ionic Substitutions for the Discovery of New Compounds",
+)
 @cached_class
 class SubstitutionProbability:
     """
@@ -48,13 +51,13 @@ class SubstitutionProbability:
                 json table of the weight functions lambda if None,
                 will use the default lambda.json table
             alpha:
-                weight function for never observed substitutions
+                weight function for never observed substitutions.
         """
         if lambda_table is not None:
             self._lambda_table = lambda_table
         else:
             module_dir = os.path.dirname(__file__)
-            json_file = os.path.join(module_dir, "data", "lambda.json")
+            json_file = f"{module_dir}/data/lambda.json"
             with open(json_file) as f:
                 self._lambda_table = json.load(f)
 
@@ -64,8 +67,8 @@ class SubstitutionProbability:
         self.species = set()
         for row in self._lambda_table:
             if "D1+" not in row:
-                s1 = Species.from_string(row[0])
-                s2 = Species.from_string(row[1])
+                s1 = Species.from_str(row[0])
+                s2 = Species.from_str(row[1])
                 self.species.add(s1)
                 self.species.add(s2)
                 self._l[frozenset([s1, s2])] = float(row[2])
@@ -82,8 +85,8 @@ class SubstitutionProbability:
     def get_lambda(self, s1, s2):
         """
         Args:
-            s1 (Structure): 1st Structure
-            s2 (Structure): 2nd Structure
+            s1 (Element/Species/str/int): Describes Ion in 1st Structure
+            s2 (Element/Species/str/int): Describes Ion in 2nd Structure.
 
         Returns:
             Lambda values
@@ -94,7 +97,7 @@ class SubstitutionProbability:
     def get_px(self, sp):
         """
         Args:
-            sp (Species/Element): Species
+            sp (Species/Element): Species.
 
         Returns:
             Probability
@@ -138,7 +141,7 @@ class SubstitutionProbability:
     def cond_prob_list(self, l1, l2):
         """
         Find the probabilities of 2 lists. These should include ALL species.
-        This is the probability conditional on l2
+        This is the probability conditional on l2.
 
         Args:
             l1, l2:
@@ -155,33 +158,31 @@ class SubstitutionProbability:
         return p
 
     def as_dict(self):
-        """
-        Returns: MSONAble dict
-        """
+        """Returns: MSONable dict."""
         return {
-            "name": self.__class__.__name__,
+            "name": type(self).__name__,
             "version": __version__,
             "init_args": {"lambda_table": self._l, "alpha": self.alpha},
-            "@module": self.__class__.__module__,
-            "@class": self.__class__.__name__,
+            "@module": type(self).__module__,
+            "@class": type(self).__name__,
         }
 
     @classmethod
-    def from_dict(cls, d):
+    def from_dict(cls, dct):
         """
         Args:
-            d(dict): Dict representation
+            dct (dict): Dict representation.
 
         Returns:
             Class
         """
-        return cls(**d["init_args"])
+        return cls(**dct["init_args"])
 
 
 class SubstitutionPredictor:
     """
     Predicts likely substitutions either to or from a given composition
-    or species list using the SubstitutionProbability
+    or species list using the SubstitutionProbability.
     """
 
     def __init__(self, lambda_table=None, alpha=-5, threshold=1e-3):
@@ -203,7 +204,8 @@ class SubstitutionPredictor:
                 If true, substitutions with this as a final composition
                 will be found. If false, substitutions with this as a
                 starting composition will be found (these are slightly
-                different)
+                different).
+
         Returns:
             List of predictions in the form of dictionaries.
             If to_this_composition is true, the values of the dictionary
@@ -212,13 +214,13 @@ class SubstitutionPredictor:
         """
         for sp in species:
             if get_el_sp(sp) not in self.p.species:
-                raise ValueError("the species {} is not allowed for the" "probability model you are using".format(sp))
+                raise ValueError(f"the species {sp} is not allowed for the probability model you are using")
         max_probabilities = []
         for s1 in species:
             if to_this_composition:
-                max_p = max([self.p.cond_prob(s2, s1) for s2 in self.p.species])
+                max_p = max(self.p.cond_prob(s2, s1) for s2 in self.p.species)
             else:
-                max_p = max([self.p.cond_prob(s1, s2) for s2 in self.p.species])
+                max_p = max(self.p.cond_prob(s1, s2) for s2 in self.p.species)
             max_probabilities.append(max_p)
 
         output = []
@@ -238,14 +240,11 @@ class SubstitutionPredictor:
                     return
                 for sp in self.p.species:
                     i = len(output_prob)
-                    if to_this_composition:
-                        prob = self.p.cond_prob(sp, species[i])
-                    else:
-                        prob = self.p.cond_prob(species[i], sp)
-                    _recurse(output_prob + [prob], output_species + [sp])
+                    prob = self.p.cond_prob(sp, species[i]) if to_this_composition else self.p.cond_prob(species[i], sp)
+                    _recurse([*output_prob, prob], [*output_species, sp])
 
         _recurse([], [])
-        logging.info("{} substitutions found".format(len(output)))
+        logging.info(f"{len(output)} substitutions found")
         return output
 
     def composition_prediction(self, composition, to_this_composition=True):
@@ -268,17 +267,14 @@ class SubstitutionPredictor:
             will be from the list species. If false, the keys will be
             from that list.
         """
-        preds = self.list_prediction(list(composition.keys()), to_this_composition)
+        preds = self.list_prediction(list(composition), to_this_composition)
         output = []
         for p in preds:
-            if to_this_composition:
-                subs = {v: k for k, v in p["substitutions"].items()}
-            else:
-                subs = p["substitutions"]
+            subs = {v: k for k, v in p["substitutions"].items()} if to_this_composition else p["substitutions"]
             charge = 0
             for k, v in composition.items():
                 charge += subs[k].oxi_state * v
             if abs(charge) < 1e-8:
                 output.append(p)
-        logging.info("{} charge balanced substitutions found".format(len(output)))
+        logging.info(f"{len(output)} charge balanced substitutions found")
         return output

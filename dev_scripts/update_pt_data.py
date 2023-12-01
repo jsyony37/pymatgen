@@ -2,49 +2,51 @@
 
 """
 Developer script to convert yaml periodic table to json format.
-Created on Nov 15, 2011
+Created on Nov 15, 2011.
 """
 
+from __future__ import annotations
+
+import collections
 import json
+import re
 from itertools import product
 
-import ruamel.yaml as yaml
-import re
+import requests
+from bs4 import BeautifulSoup
+from monty.serialization import dumpfn, loadfn
+from ruamel import yaml
 
-from monty.serialization import loadfn, dumpfn
-
-from pymatgen.core import Element
-from pymatgen.core.periodic_table import get_el_sp
+from pymatgen.core import Element, get_el_sp
 
 
 def test_yaml():
-    with open("periodic_table.yaml", "r") as f:
-        data = yaml.load(f)
+    with open("periodic_table.yaml") as file:
+        data = yaml.load(file)
         print(data)
 
 
 def test_json():
-    with open("periodic_table.json", "r") as f:
-        data = json.load(f)
+    with open("periodic_table.json") as file:
+        data = json.load(file)
         print(data)
 
 
 def parse_oxi_state():
-    with open("periodic_table.yaml", "r") as f:
-        data = yaml.load(f)
-    f = open("oxidation_states.txt", "r")
-    oxidata = f.read()
-    f.close()
-    oxidata = re.sub("[\n\r]", "", oxidata)
+    with open("periodic_table.yaml") as file:
+        data = yaml.load(file)
+    with open("oxidation_states.txt") as file:
+        oxi_data = file.read()
+    oxi_data = re.sub("[\n\r]", "", oxi_data)
     patt = re.compile("<tr>(.*?)</tr>", re.MULTILINE)
 
-    for m in patt.finditer(oxidata):
+    for m in patt.finditer(oxi_data):
         line = m.group(1)
         line = re.sub("</td>", "", line)
         line = re.sub("(<td>)+", "<td>", line)
         line = re.sub("</*a[^>]*>", "", line)
         el = None
-        oxistates = []
+        oxi_states = []
         common_oxi = []
         for tok in re.split("<td>", line.strip()):
             m2 = re.match(r"<b>([A-Z][a-z]*)</b>", tok)
@@ -53,7 +55,7 @@ def parse_oxi_state():
             else:
                 m3 = re.match(r"(<b>)*([\+\-]\d)(</b>)*", tok)
                 if m3:
-                    oxistates.append(int(m3.group(2)))
+                    oxi_states.append(int(m3.group(2)))
                     if m3.group(1):
                         common_oxi.append(int(m3.group(2)))
         if el in data:
@@ -61,34 +63,33 @@ def parse_oxi_state():
             del data[el]["Min oxidation state"]
             del data[el]["Oxidation_states"]
             del data[el]["Common_oxidation_states"]
-            data[el]["Oxidation states"] = oxistates
+            data[el]["Oxidation states"] = oxi_states
             data[el]["Common oxidation states"] = common_oxi
         else:
             print(el)
-    with open("periodic_table2.yaml", "w") as f:
-        yaml.dump(data, f)
+    with open("periodic_table2.yaml", "w") as file:
+        yaml.dump(data, file)
 
 
 def parse_ionic_radii():
-    with open("periodic_table.yaml", "r") as f:
+    with open("periodic_table.yaml") as f:
         data = yaml.load(f)
-    f = open("ionic_radii.csv", "r")
-    radiidata = f.read()
-    f.close()
-    radiidata = radiidata.split("\r")
-    header = radiidata[0].split(",")
-    for i in range(1, len(radiidata)):
-        line = radiidata[i]
-        toks = line.strip().split(",")
+    with open("ionic_radii.csv") as f:
+        radii_data = f.read()
+    radii_data = radii_data.split("\r")
+    header = radii_data[0].split(",")
+    for idx in range(1, len(radii_data)):
+        line = radii_data[idx]
+        tokens = line.strip().split(",")
         suffix = ""
-        name = toks[1]
+        name = tokens[1]
         if len(name.split(" ")) > 1:
             suffix = "_" + name.split(" ")[1]
-        el = toks[2]
+        el = tokens[2]
 
         ionic_radii = {}
-        for j in range(3, len(toks)):
-            m = re.match("^\s*([0-9\.]+)", toks[j])
+        for j in range(3, len(tokens)):
+            m = re.match(r"^\s*([0-9\.]+)", tokens[j])
             if m:
                 ionic_radii[int(header[j])] = float(m.group(1))
 
@@ -103,31 +104,29 @@ def parse_ionic_radii():
 
 
 def parse_radii():
-    with open("periodic_table.yaml", "r") as f:
+    with open("periodic_table.yaml") as f:
         data = yaml.load(f)
-    f = open("radii.csv", "r")
-    radiidata = f.read()
-    f.close()
-    radiidata = radiidata.split("\r")
-    header = radiidata[0].split(",")
-    for i in range(1, len(radiidata)):
-        line = radiidata[i]
-        toks = line.strip().split(",")
-        el = toks[1]
+    with open("radii.csv") as f:
+        radii_data = f.read()
+    radii_data = radii_data.split("\r")
+
+    for line in radii_data:
+        tokens = line.strip().split(",")
+        el = tokens[1]
         try:
-            atomic_radii = float(toks[3]) / 100
+            atomic_radii = float(tokens[3]) / 100
         except Exception:
-            atomic_radii = toks[3]
+            atomic_radii = tokens[3]
 
         try:
-            atomic_radii_calc = float(toks[4]) / 100
+            atomic_radii_calc = float(tokens[4]) / 100
         except Exception:
-            atomic_radii_calc = toks[4]
+            atomic_radii_calc = tokens[4]
 
         try:
-            vdw_radii = float(toks[5]) / 100
+            vdw_radii = float(tokens[5]) / 100
         except Exception:
-            vdw_radii = toks[5]
+            vdw_radii = tokens[5]
 
         if el in data:
             data[el]["Atomic radius"] = atomic_radii
@@ -142,10 +141,10 @@ def parse_radii():
 
 
 def update_ionic_radii():
-    with open("periodic_table.yaml", "r") as f:
+    with open("periodic_table.yaml") as f:
         data = yaml.load(f)
 
-    for el, d in data.items():
+    for d in data.values():
         if "Ionic_radii" in d:
             d["Ionic radii"] = {k: v / 100 for k, v in d["Ionic_radii"].items()}
             del d["Ionic_radii"]
@@ -162,40 +161,36 @@ def update_ionic_radii():
 
 
 def parse_shannon_radii():
-    with open("periodic_table.yaml", "r") as f:
+    with open("periodic_table.yaml") as f:
         data = yaml.load(f)
+
     from openpyxl import load_workbook
-    import collections
 
     wb = load_workbook("Shannon Radii.xlsx")
     print(wb.get_sheet_names())
     sheet = wb["Sheet1"]
     i = 2
     radii = collections.defaultdict(dict)
-    while sheet["E%d" % i].value:
-        if sheet["A%d" % i].value:
-            el = sheet["A%d" % i].value
-        if sheet["B%d" % i].value:
-            charge = int(sheet["B%d" % i].value)
-            radii[el][charge] = dict()
-        if sheet["C%d" % i].value:
-            cn = sheet["C%d" % i].value
+    while sheet[f"E{i}"].value:
+        if sheet[f"A{i}"].value:
+            el = sheet[f"A{i}"].value
+        if sheet[f"B{i}"].value:
+            charge = int(sheet[f"B{i}"].value)
+            radii[el][charge] = {}
+        if sheet[f"C{i}"].value:
+            cn = sheet[f"C{i}"].value
             if cn not in radii[el][charge]:
-                radii[el][charge][cn] = dict()
+                radii[el][charge][cn] = {}
 
-        if sheet["D%d" % i].value is not None:
-            spin = sheet["D%d" % i].value
-        else:
-            spin = ""
-        # print("%s - %d - %s" % (el, charge, cn))
+        spin = sheet[f"D{i}"].value if sheet[f"D{i}"].value is not None else ""
 
         radii[el][charge][cn][spin] = {
-            "crystal_radius": float(sheet["E%d" % i].value),
-            "ionic_radius": float(sheet["F%d" % i].value),
+            "crystal_radius": float(sheet[f"E{i}"].value),
+            "ionic_radius": float(sheet[f"F{i}"].value),
         }
         i += 1
 
-    for el in radii.keys():
+    for el in radii:
         if el in data:
             data[el]["Shannon radii"] = dict(radii[el])
 
@@ -206,7 +201,7 @@ def parse_shannon_radii():
 
 
 def gen_periodic_table():
-    with open("periodic_table.yaml", "r") as f:
+    with open("periodic_table.yaml") as f:
         data = yaml.load(f)
 
     with open("periodic_table.json", "w") as f:
@@ -239,7 +234,7 @@ def gen_iupac_ordering():
         ([17], range(6, 1, -1)),
     ]  # At -> F
 
-    order = sum([list(product(x, y)) for x, y in order], [])
+    order = sum((list(product(x, y)) for x, y in order), [])
     iupac_ordering_dict = dict(zip([Element.from_row_and_group(row, group) for group, row in order], range(len(order))))
 
     # first clean periodic table of any IUPAC ordering
@@ -250,19 +245,15 @@ def gen_iupac_ordering():
     for el in periodic_table:
         if "IUPAC ordering" in periodic_table[el]:
             # sanity check that we don't cover the same element twice
-            raise KeyError("IUPAC ordering already exists for {}".format(el))
+            raise KeyError(f"IUPAC ordering already exists for {el}")
 
         periodic_table[el]["IUPAC ordering"] = iupac_ordering_dict[get_el_sp(el)]
 
 
 def add_electron_affinities():
-    """
-    Update the periodic table data file with electron affinities.
-    """
-    from bs4 import BeautifulSoup
-    import requests
+    """Update the periodic table data file with electron affinities."""
 
-    req = requests.get("https://en.wikipedia.org/wiki/Electron_affinity_(data_page)")
+    req = requests.get("https://wikipedia.org/wiki/Electron_affinity_(data_page)")
     soup = BeautifulSoup(req.text, "html.parser")
     for t in soup.find_all("table"):
         if "Hydrogen" in t.text:
@@ -275,20 +266,16 @@ def add_electron_affinities():
         data.append(row)
     data.pop(0)
     ea = {int(r[0]): float(re.sub(r"[\s\(\)]", "", r[3].strip("()[]"))) for r in data}
-    assert set(ea.keys()).issuperset(range(1, 93))  # Ensure that we have data for up to U.
+    assert set(ea).issuperset(range(1, 93))  # Ensure that we have data for up to U.
     print(ea)
     pt = loadfn("../pymatgen/core/periodic_table.json")
     for k, v in pt.items():
-        v["Electron affinity"] = ea.get(Element(k).Z, None)
+        v["Electron affinity"] = ea.get(Element(k).Z)
     dumpfn(pt, "../pymatgen/core/periodic_table.json")
 
 
 def add_ionization_energies():
-    """
-    Update the periodic table data file with ground level and ionization energies from NIST.
-    """
-    from bs4 import BeautifulSoup
-    import collections
+    """Update the periodic table data file with ground level and ionization energies from NIST."""
 
     with open("NIST Atomic Ionization Energies Output.html") as f:
         soup = BeautifulSoup(f.read(), "html.parser")
@@ -301,14 +288,11 @@ def add_ionization_energies():
         if row:
             Z = int(row[0])
             val = re.sub(r"\s", "", row[8].strip("()[]"))
-            if val == "":
-                val = None
-            else:
-                val = float(val)
+            val = None if val == "" else float(val)
             data[Z].append(val)
     print(data)
     print(data[51])
-    assert set(data.keys()).issuperset(range(1, 93))  # Ensure that we have data for up to U.
+    assert set(data).issuperset(range(1, 93))  # Ensure that we have data for up to U.
     pt = loadfn("../pymatgen/core/periodic_table.json")
     for k, v in pt.items():
         del v["Ionization energy"]
