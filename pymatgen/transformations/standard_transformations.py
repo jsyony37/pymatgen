@@ -23,6 +23,12 @@ from pymatgen.core.structure import Lattice, Structure
 from pymatgen.symmetry.analyzer import SpacegroupAnalyzer
 from pymatgen.transformations.site_transformations import PartialRemoveSitesTransformation
 from pymatgen.transformations.transformation_abc import AbstractTransformation
+from pymatgen.io.ase import AseAtomsAdaptor
+from pymatgen.io.phonopy import get_pmg_structure
+
+from phonopy.structure.atoms import PhonopyAtoms
+from phonopy import Phonopy
+
 
 if TYPE_CHECKING:
     from pymatgen.core.sites import PeriodicSite
@@ -196,6 +202,78 @@ class OxidationStateRemovalTransformation(AbstractTransformation):
         return False
 
 
+class PhonopySupercellTransformation(AbstractTransformation):
+    """
+    The RotationTransformation applies a rotation to a structure.
+    """
+
+    def __init__(self, scaling_matrix=((1, 0, 0), (0, 1, 0), (0, 0, 1))):
+        """
+        Args:
+            scaling_matrix: A matrix of transforming the lattice vectors.
+                Defaults to the identity matrix. Has to be all integers. e.g.,
+                [[2,1,0],[0,3,0],[0,0,1]] generates a new structure with
+                lattice vectors a" = 2a + b, b" = 3b, c" = c where a, b, and c
+                are the lattice vectors of the original structure.
+        """
+        self.scaling_matrix = scaling_matrix
+
+    @staticmethod
+    def from_scaling_factors(scale_a=1, scale_b=1, scale_c=1):
+        """
+        Convenience method to get a SupercellTransformation from a simple
+        series of three numbers for scaling each lattice vector. Equivalent to
+        calling the normal with [[scale_a, 0, 0], [0, scale_b, 0],
+        [0, 0, scale_c]]
+
+        Args:
+            scale_a: Scaling factor for lattice direction a. Defaults to 1.
+            scale_b: Scaling factor for lattice direction b. Defaults to 1.
+            scale_c: Scaling factor for lattice direction c. Defaults to 1.
+
+        Returns:
+            SupercellTransformation.
+        """
+        return SupercellTransformation([[scale_a, 0, 0], [0, scale_b, 0], [0, 0, scale_c]])
+
+    def apply_transformation(self, structure):
+        """
+        Apply the transformation.
+        Args:
+            structure (Structure): Input Structure
+
+        Returns:
+            Supercell Structure.
+        """
+        atoms = AseAtomsAdaptor.get_atoms(structure) 
+        prim_phonopy = PhonopyAtoms(symbols=atoms.get_chemical_symbols(), scaled_positions=atoms.get_scaled_positions(), cell=atoms.cell)
+        phonopy = Phonopy(prim_phonopy, supercell_matrix=scmat, primitive_matrix=None)
+        supercell = get_pmg_structure(phonopy.supercell)
+
+        return supercell
+
+    def __str__(self):
+        return "Supercell Transformation with scaling matrix " + "{}".format(self.scaling_matrix)
+    
+    def __repr__(self):
+        return self.__str__()
+
+    @property
+    def inverse(self):
+        """
+        Raises: NotImplementedError
+        """
+        raise NotImplementedError()
+
+    @property
+    def is_one_to_many(self):
+        """
+        Returns: False
+        """
+        return False
+
+
+
 class SupercellTransformation(AbstractTransformation):
     """The SupercellTransformation replicates a unit cell to a supercell."""
 
@@ -300,7 +378,7 @@ class SupercellTransformation(AbstractTransformation):
         """Returns: False."""
         return False
 
-
+    
 class SubstitutionTransformation(AbstractTransformation):
     """This transformation substitutes species for one another."""
 
